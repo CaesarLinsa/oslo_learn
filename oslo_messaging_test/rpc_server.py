@@ -5,8 +5,8 @@ import time
 
 argv = sys.argv
 
-cfg.CONF(argv[1:])
-
+CONF=cfg.CONF
+CONF(argv[1:])
 
 class TestEndPoint():
 
@@ -16,7 +16,7 @@ class TestEndPoint():
 
 endpoints = [TestEndPoint(), ]
 
-tansport = oslo.messaging.get_transport(cfg.CONF)
+tansport = oslo.messaging.get_transport(CONF)
 target = oslo.messaging.Target(topic="rpc", server="server")
 server = oslo.messaging.get_rpc_server(tansport, target, endpoints, executor="blocking")
 
