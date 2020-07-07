@@ -1,0 +1,7 @@
+[DEFAULT]
+rabbit_host = 196.168.1.120
+rabbit_port = 5672
+rabbit_use_ssl=false
+rabbit_userid=guest
+rabbit_password=guest
+rpc_backend=rabbit
