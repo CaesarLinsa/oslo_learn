@@ -1,8 +1,7 @@
-from entity import DirectPublisher, Target
-from kombu import Connection
+from rabbitmq_entity import Target
+from rabbitmq_impl import Connection
 
 
 target = Target("task_exchange", "task", "task_queue")
-conn = Connection("amqp://guest:guest@196.168.1.120:5672//")
-m = DirectPublisher(conn, target)
-m.publish("hello world")
+conn = Connection()
+conn.direct_send(target, "ni hao ma")

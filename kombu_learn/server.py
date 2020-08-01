@@ -1,17 +1,15 @@
-from kombu import Connection
-from entity import Target, DirectConsumer
+from rabbitmq_entity import Target
+from rabbitmq_impl import Connection
 
 target = Target("task_exchange", "task", "task_queue")
-conn = Connection("amqp://guest:guest@196.168.1.120:5672/")
-c = DirectConsumer(conn, target)
+conn = Connection()
 
 
 def process_data(message):
-    msg = c.get_channel().message_to_python(message)
+    msg = conn.channel.message_to_python(message)
     print(msg.body)
     msg.ack()
 
 
-c.consume(process_data)
-c.run()
-
+conn.declare_direct_consumer(target, process_data)
+conn.consume()

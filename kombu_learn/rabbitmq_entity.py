@@ -1,7 +1,11 @@
 from kombu import Queue, Exchange
 from kombu.messaging import Producer
 
-__all__ = ['Target', 'DirectPublisher', 'TopicPublisher', 'DirectConsumer', 'TopicConsumer']
+__all__ = ['Target',
+           'DirectPublisher',
+           'TopicPublisher',
+           'DirectConsumer',
+           'TopicConsumer']
 
 
 class Target(object):
@@ -15,16 +19,18 @@ class Target(object):
 class BasePublisher(object):
     EXCHANGE_TYPE = None
 
-    def __init__(self, conn, target):
-        self.conn = conn
+    def __init__(self, channel, target, **kwargs):
+        self.channel = channel
         self.target = target
-        self.channel = conn.channel()
 
-    def publish(self, data):
+    def publish(self, data, timeout=None):
         p = Producer(channel=self.channel,
                      exchange=Exchange(self.target.exchange_name, type=self.EXCHANGE_TYPE),
                      routing_key=self.target.routing_key)
-        p.publish(data)
+        if timeout:
+            p.publish(data, headers={'ttl': (timeout * 1000)})
+        else:
+            p.publish(data)
 
 
 class DirectPublisher(BasePublisher):
@@ -38,29 +44,21 @@ class TopicPublisher(BasePublisher):
 class BaseConsumer(object):
     EXCHANGE_TYPE = None
 
-    def __init__(self, conn, target):
-        self.conn = conn
+    def __init__(self, channel, target, callback, **kwargs):
         self.target = target
-        self.channel = conn.channel()
+        self.channel = channel
+        self.callback = callback
 
-    def consume(self, callback):
+    def consume(self, nowait=False):
         q = Queue(self.target.queue_name,
                   exchange=Exchange(self.target.exchange_name, type=self.EXCHANGE_TYPE),
                   routing_key=self.target.routing_key,
                   channel=self.channel)
-        q.declare()
-        q.consume(callback=callback)
+        q.declare(nowait)
+        q.consume(callback=self.callback)
 
     def get_channel(self):
         return self.channel
-
-    def run(self):
-        while True:
-            try:
-                self.conn.drain_events()
-            except Exception as e:
-                print("stop:%s" % str(e))
-                break
 
 
 class DirectConsumer(BaseConsumer):

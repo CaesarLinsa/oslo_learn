@@ -1,0 +1,1 @@
+RABBITMQ_CONNECTION_URL = "amqp://guest:guest@196.168.1.120:5672//"
