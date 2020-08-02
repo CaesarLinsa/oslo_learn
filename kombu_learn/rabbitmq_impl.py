@@ -13,6 +13,7 @@ from rabbitmq_entity import (TopicConsumer,
 
 
 class Connection(object):
+    pool = None
 
     def __init__(self, connection_url=None):
         self.consumers = []
@@ -133,11 +134,11 @@ class Connection(object):
                                                 ),
                               topic, callback)
 
-    def direct_send(self, target, msg):
-        self.publisher_send(DirectPublisher, target, msg)
+    def direct_send(self, target, msg, timeout=None):
+        self.publisher_send(DirectPublisher, target, msg, timeout)
 
-    def topic_send(self, topic, msg, timeout=None):
-        self.publisher_send(TopicPublisher, topic, msg, timeout)
+    def topic_send(self, target, msg, timeout=None):
+        self.publisher_send(TopicPublisher, target, msg, timeout)
 
     def consume(self, limit=None, timeout=None):
         it = self.iterconsume(limit=limit, timeout=timeout)
@@ -146,3 +147,12 @@ class Connection(object):
                 it.next()
             except StopIteration:
                 return
+
+    def close(self):
+        self.connection.release()
+        self.connection = None
+
+    def reset(self):
+        self.channel.close()
+        self.channel = self.connection.channel()
+        self.consumers = []

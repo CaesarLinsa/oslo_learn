@@ -1,7 +1,6 @@
 from rabbitmq_entity import Target
-from rabbitmq_impl import Connection
+from connection_pool import direct_cast
 
 
 target = Target("task_exchange", "task", "task_queue")
-conn = Connection()
-conn.direct_send(target, "ni hao ma")
+direct_cast(target, {"data":"ni hao ma"})

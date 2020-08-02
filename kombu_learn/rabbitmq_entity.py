@@ -22,10 +22,17 @@ class BasePublisher(object):
     def __init__(self, channel, target, **kwargs):
         self.channel = channel
         self.target = target
+        self.options = {'durable': False,
+                        'queue_arguments': {'x-ha-policy': 'all'},
+                        'auto_delete': True,
+                        'exclusive': False}
+        self.options.update(kwargs)
 
     def publish(self, data, timeout=None):
         p = Producer(channel=self.channel,
-                     exchange=Exchange(self.target.exchange_name, type=self.EXCHANGE_TYPE),
+                     exchange=Exchange(self.target.exchange_name, type=self.EXCHANGE_TYPE,
+                                       durable=self.options['durable'],
+                                       auto_delete=self.options['auto_delete']),
                      routing_key=self.target.routing_key)
         if timeout:
             p.publish(data, headers={'ttl': (timeout * 1000)})
@@ -48,10 +55,17 @@ class BaseConsumer(object):
         self.target = target
         self.channel = channel
         self.callback = callback
+        self.options = {'durable': False,
+                        'queue_arguments': {'x-ha-policy': 'all'},
+                        'auto_delete': True,
+                        'exclusive': False}
+        self.options.update(kwargs)
 
     def consume(self, nowait=False):
         q = Queue(self.target.queue_name,
-                  exchange=Exchange(self.target.exchange_name, type=self.EXCHANGE_TYPE),
+                  exchange=Exchange(self.target.exchange_name, type=self.EXCHANGE_TYPE,
+                                    durable=self.options['durable'],
+                                    auto_delete=self.options['auto_delete']),
                   routing_key=self.target.routing_key,
                   channel=self.channel)
         q.declare(nowait)
