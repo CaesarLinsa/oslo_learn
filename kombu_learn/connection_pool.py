@@ -4,10 +4,6 @@ import os
 from config import Config
 import collections
 import threading
-import uuid
-from rabbitmq_impl import Connection
-
-MSG_ID = 'msg_id'
 
 
 class Pool(object):
@@ -94,60 +90,3 @@ def get_connection_pool(connection_cls):
         if not connection_cls.pool:
             connection_cls.pool = ConnectionPool(connection_cls)
         return connection_cls.pool
-
-
-class ConnectionContext(object):
-
-    def __init__(self, connection_pool, pooled=True):
-
-        self.connection = None
-        self.connection_pool = connection_pool
-
-        if pooled:
-            self.connection = self.connection_pool.get()
-        else:
-            self.connection = self.connection_pool.connection_cls()
-
-        self.pooled = pooled
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self._done()
-
-    def _done(self):
-
-        if self.connection:
-            if self.pooled:
-                self.connection.reset()
-                self.connection_pool.put(self.connection)
-            else:
-                try:
-                    self.connection.close()
-                except Exception:
-                    pass
-
-    def __getattr__(self, key):
-
-        if self.connection:
-            return getattr(self.connection, key)
-        else:
-            raise Exception("connection is None")
-
-
-def _add_msg_id(msg):
-    unique_id = uuid.uuid4().hex
-    msg.update({MSG_ID: unique_id})
-
-
-def topic_cast(target, msg, timeout=None):
-    _add_msg_id(msg)
-    with ConnectionContext(get_connection_pool(Connection)) as conn:
-        conn.topic_send(target, msg, timeout)
-
-
-def direct_cast(target, msg, timeout=None):
-    _add_msg_id(msg)
-    with ConnectionContext(get_connection_pool(Connection)) as conn:
-        conn.direct_send(target, msg, timeout)

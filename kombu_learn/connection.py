@@ -2,14 +2,16 @@ import os
 import time
 import socket
 import itertools
-import functools
 from kombu import connection
-
+import uuid
 from config import Config
 from rabbitmq_entity import (TopicConsumer,
                              DirectConsumer,
                              TopicPublisher,
                              DirectPublisher)
+from connection_pool import get_connection_pool
+
+MSG_ID = 'msg_id'
 
 
 class Connection(object):
@@ -125,14 +127,8 @@ class Connection(object):
     def declare_direct_consumer(self, target, callback):
         self.declare_consumer(DirectConsumer, target, callback)
 
-    def declare_topic_consumer(self, topic, callback=None, queue_name=None,
-                               exchange_name=None, ack_on_error=True):
-        self.declare_consumer(functools.partial(TopicConsumer,
-                                                name=queue_name,
-                                                exchange_name=exchange_name,
-                                                ack_on_error=ack_on_error,
-                                                ),
-                              topic, callback)
+    def declare_topic_consumer(self, target, callback):
+        self.declare_consumer(TopicConsumer, target, callback)
 
     def direct_send(self, target, msg, timeout=None):
         self.publisher_send(DirectPublisher, target, msg, timeout)
@@ -156,3 +152,64 @@ class Connection(object):
         self.channel.close()
         self.channel = self.connection.channel()
         self.consumers = []
+
+
+class ConnectionContext(object):
+
+    def __init__(self, connection_pool, pooled=True):
+
+        self.connection = None
+        self.connection_pool = connection_pool
+
+        if pooled:
+            self.connection = self.connection_pool.get()
+        else:
+            self.connection = self.connection_pool.connection_cls()
+
+        self.pooled = pooled
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self._done()
+
+    def _done(self):
+
+        if self.connection:
+            if self.pooled:
+                self.connection.reset()
+                self.connection_pool.put(self.connection)
+            else:
+                try:
+                    self.connection.close()
+                except Exception:
+                    pass
+
+    def __getattr__(self, key):
+
+        if self.connection:
+            return getattr(self.connection, key)
+        else:
+            raise Exception("connection is None")
+
+
+def _add_msg_id(msg):
+    msg_id = uuid.uuid4().hex
+    msg.update({MSG_ID: msg_id})
+
+
+def _make_message(msg, method, args):
+    msg = msg.update(method=method)
+    if args:
+        msg['args'] = dict()
+        for argname, arg in args.iteritems():
+            msg['args'][argname] = arg
+
+
+def cast(target, method, args=None, timeout=None):
+    msg = dict()
+    _add_msg_id(msg)
+    _make_message(msg, method, args)
+    with ConnectionContext(get_connection_pool(Connection)) as conn:
+        conn.topic_send(target, msg, timeout)

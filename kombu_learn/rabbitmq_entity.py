@@ -67,12 +67,34 @@ class BaseConsumer(object):
                                     durable=self.options['durable'],
                                     auto_delete=self.options['auto_delete']),
                   routing_key=self.target.routing_key,
-                  channel=self.channel)
+                  channel=self.channel,
+                  **self.options)
         q.declare(nowait)
-        q.consume(callback=self.callback)
+
+        def _callback(raw_message):
+            message = self.channel.message_to_python(raw_message)
+            self._callback_handler(message, self.callback)
+
+        q.consume(callback=_callback)
 
     def get_channel(self):
         return self.channel
+
+    def _callback_handler(self, message, callback):
+
+        ack_msg = False
+        try:
+            msg = message.payload
+            callback(msg)
+            ack_msg = True
+        except Exception as e:
+            print("caught an exception when deal with "
+                  "callback msg %s" % str(e))
+        finally:
+            if ack_msg:
+                message.ack()
+            else:
+                message.reject()
 
 
 class DirectConsumer(BaseConsumer):
