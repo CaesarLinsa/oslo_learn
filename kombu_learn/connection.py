@@ -4,8 +4,10 @@ import socket
 import itertools
 from kombu import connection
 import uuid
+import threading
 from config import Config
-from rabbitmq_entity import (TopicConsumer,
+from rabbitmq_entity import (Target,
+                             TopicConsumer,
                              DirectConsumer,
                              TopicPublisher,
                              DirectPublisher)
@@ -207,9 +209,56 @@ def _make_message(msg, method, args):
             msg['args'][argname] = arg
 
 
-def cast(target, method, args=None, timeout=None):
+def _call(target, method, args=None, timeout=None):
     msg = dict()
     _add_msg_id(msg)
     _make_message(msg, method, args)
     with ConnectionContext(get_connection_pool(Connection)) as conn:
         conn.topic_send(target, msg, timeout)
+
+
+def cast(target, method, args=None, timeout=None):
+    _call(target, method, args, timeout)
+
+
+def call(target, method, args=None, timeout=None, reply="true"):
+    msg = dict()
+    _add_msg_id(msg)
+    _make_message(msg, method, args)
+    msg["reply"] = True
+    waiter = ReplyWaiter(get_connection_pool(Connection), msg)
+    with ConnectionContext(get_connection_pool(Connection)) as conn:
+        conn.topic_send(target, msg, timeout)
+        result = waiter.wait(timeout)
+        return result
+
+
+class ReplyWaiter(ConnectionContext):
+
+    def __init__(self, connection_pool, msg):
+        super(ReplyWaiter, self).__init__(connection_pool, pooled=True)
+        self.target = self.get_target(msg)
+        self.incoming = []
+        self.conn_lock = threading.Lock()
+        self.declare_direct_consumer(self.target, self)
+
+    def get_target(self, msg):
+        msg_id = msg.get(MSG_ID)
+        return Target("exchange_%s" % msg_id,
+                      "routing_key_%s" % msg_id,
+                      "reply_%s" % msg_id)
+
+    def __call__(self, message):
+        self.incoming.append(message)
+
+    def get_poll_data(self, timeout):
+        while True:
+            if self.incoming:
+                return self.incoming.pop(0)
+            self.connection.consume(limit=1,
+                                    timeout=timeout)
+
+    def wait(self, timeout):
+        while True:
+            with self.conn_lock:
+                return self.get_poll_data(timeout)

@@ -1,4 +1,6 @@
+# _-_coding:utf-8 _-_
 from listener import AMQPListener
+from rabbitmq_entity import Target
 
 
 class Server(object):
@@ -24,7 +26,18 @@ class Server(object):
             method = message.get("method")
             args = message.get("args", {})
             if hasattr(endpoint, method):
-                return self.__dispatch(endpoint, method, args)
+                result = self.__dispatch(endpoint, method, args)
+                if message.get("reply"):
+                    msg_id = msg_handler.msg_id
+                    target = Target("exchange_%s" % msg_id,
+                                    "routing_key_%s" % msg_id,
+                                    "reply_%s" % msg_id)
+                    # todo 此处不加休眠，虽然已经发送，
+                    # 但是客户端队列中没有，怀疑可能队列没有
+                    # 创建
+                    import time
+                    time.sleep(0.1)
+                    self.conn.direct_send(target, result)
 
     def __dispatch(self, endpoint, method, args):
         new_args = dict()
